@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Sistema de Ventas - Estado de Cuenta Bancario</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+body { font-family: Arial, sans-serif; margin: 0; display: flex; height: 100vh; }
+/* Barra lateral */
+#sidebar { width: 220px; background: #2c3e50; color: #fff; display: none; flex-direction: column; padding-top: 20px; transition: width 0.3s; }
+#sidebar h2 { text-align: center; font-size: 18px; margin-bottom: 20px; }
+.opcion { padding: 12px; margin: 5px 10px; cursor: pointer; border-radius: 5px; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+.opcion:hover, .opcion.active { background: #34495e; }
+#logout { margin: 20px 10px; padding: 8px; font-size: 16px; cursor: pointer; background: #c0392b; color: #fff; border: none; border-radius: 5px; }
+#logout:hover { background: #e74c3c; }
+/* Contenido principal */
+#main { flex: 1; padding: 20px; overflow-y: auto; }
+/* Formularios */
+.formulario { display: none; margin-top: 20px; padding: 20px; border: 1px solid #ccc; background: #fafafa; border-radius: 8px; max-width: 600px; }
+input, select, button, textarea { margin: 8px 0; padding: 10px; width: 100%; font-size: 16px; box-sizing: border-box; }
+textarea { width: 100%; padding:10px; font-size:16px; box-sizing:border-box; }
+</style>
+</head>
+<body>
+<script>document.getElementById("contenido").innerHTML=window.AppInventor.getWebViewString();</script>
+<!-- Barra lateral -->
+<div id="sidebar">
+  <h2>Menú</h2>
+  <div id="menu"></div>
+  <button id="logout">Cerrar Sesión</button>
+</div>
+
+<!-- Contenido principal -->
+<div id="main">
+  <h2>Login Sistema de Ventas</h2>
+  <form id="loginForm">
+    <label>Usuario:</label>
+    <input type="text" id="usuario" required><br>
+    <label>Contraseña:</label>
+    <input type="password" id="contrasena" required><br>
+    <button type="submit">Ingresar</button>
+  </form>
+
+  <h3 id="bienvenida"></h3>
+
+  <!-- Formularios -->
+  <div id="clientesForm" class="formulario">
+    <h3>Agregar / Editar Cliente</h3>
+    <select id="selectCliente" onchange="cargarClienteSeleccionado()">
+      <option value="">Nuevo Cliente</option>
+    </select><br>
+    <input type="text" id="nombreCliente" placeholder="Nombre"><br>
+    <input type="text" id="direccionCliente" placeholder="Dirección"><br>
+    <input type="text" id="telefonoCliente" placeholder="Teléfono"><br>
+    <input type="email" id="correoCliente" placeholder="Correo electrónico"><br>
+    <button id="guardarCliente">Guardar Cliente</button>
+  </div>
+
+  <div id="ventasForm" class="formulario">
+    <h3>Registrar Venta</h3>
+    <select id="clienteVenta"></select><br>
+    <input type="date" id="fechaVenta"><br>
+    <input type="text" id="descripcionVenta" placeholder="Descripción"><br>
+    <input type="number" step="0.01" id="montoVenta" placeholder="Monto"><br>
+    <button id="guardarVenta">Guardar Venta</button>
+  </div>
+
+  <div id="pagosForm" class="formulario">
+    <h3>Registrar Pago</h3>
+    <select id="clientePago"></select><br>
+    <input type="date" id="fechaPago"><br>
+    <input type="text" id="descripcionPago" placeholder="Descripción"><br>
+    <input type="number" step="0.01" id="montoPago" placeholder="Monto"><br>
+    <button id="guardarPago">Guardar Pago</button>
+  </div>
+
+  <div id="usuariosForm" class="formulario">
+    <h3>Crear Usuario</h3>
+    <input type="text" id="nuevoUsuario" placeholder="Nombre de Usuario"><br>
+    <input type="password" id="nuevaContrasena" placeholder="Contraseña"><br>
+    <select id="rolUsuario">
+      <option value="true">Administrador</option>
+      <option value="false">Usuario</option>
+    </select><br>
+    <button id="guardarUsuario">Guardar Usuario</button>
+  </div>
+
+  <div id="estadoCuentaForm" class="formulario">
+    <h3>Generar Estado de Cuenta Bancario</h3>
+    <select id="clienteEstado"></select><br>
+    <button id="generarPDF">Generar PDF</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+<script>
+const SUPABASE_URL = "https://tbamcogdglwilgobhhfe.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRiYW1jb2dkZ2x3aWxnb2JoaGZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0MTc4MjEsImV4cCI6MjA3NDk5MzgyMX0.zw0VozoGEMEwT6B15jd7BlqT5MGNdCuX8x3yA1Us6fI";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const form = document.getElementById("loginForm");
+const bienvenida = document.getElementById("bienvenida");
+const sidebar = document.getElementById("sidebar");
+const menu = document.getElementById("menu");
+const logout = document.getElementById("logout");
+
+let esAdmin = false;
+
+// --- LOGIN ---
+form.addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const usuario = document.getElementById("usuario").value;
+  const contrasena = document.getElementById("contrasena").value;
+
+  const { data, error } = await supabase.from("usuarios").select("*").eq("usuario", usuario).eq("contrasena", contrasena).single();
+  if(error||!data){ bienvenida.textContent="⚠️ Usuario o contraseña incorrectos."; return; }
+
+  esAdmin = data.es_admin;
+  form.style.display="none";
+  sidebar.style.display="flex";
+
+  if(esAdmin){
+    bienvenida.textContent="👑 Bienvenido Administrador: "+data.usuario;
+    mostrarMenu([
+      {nombre:"Clientes", icon:"fa-user"},
+      {nombre:"Ventas", icon:"fa-cart-shopping"},
+      {nombre:"Pagos", icon:"fa-money-bill"},
+      {nombre:"Estado de Cuenta", icon:"fa-file-invoice-dollar"},
+      {nombre:"Usuarios", icon:"fa-users"}
+    ]);
+  } else {
+    bienvenida.textContent="👤 Bienvenido Usuario: "+data.usuario;
+    mostrarMenu([
+      {nombre:"Clientes", icon:"fa-user"},
+      {nombre:"Ventas", icon:"fa-cart-shopping"},
+      {nombre:"Pagos", icon:"fa-money-bill"},
+      {nombre:"Estado de Cuenta", icon:"fa-file-invoice-dollar"}
+    ]);
+  }
+
+  cargarClientes();
+});
+
+// --- MENÚ ---
+function mostrarMenu(opciones){
+  menu.innerHTML="";
+  opciones.forEach(op=>{
+    const div=document.createElement("div");
+    div.className="opcion";
+    div.innerHTML = `<i class="fa ${op.icon}"></i> ${op.nombre}`;
+    div.onclick=()=>{
+      document.querySelectorAll(".opcion").forEach(d=>d.classList.remove("active"));
+      div.classList.add("active");
+      abrirFormulario(op.nombre);
+    };
+    menu.appendChild(div);
+  });
+}
+
+// --- ABRIR FORMULARIO ---
+function abrirFormulario(opcion){
+  document.querySelectorAll(".formulario").forEach(f=>f.style.display="none");
+  if(opcion==="Clientes") document.getElementById("clientesForm").style.display="block";
+  if(opcion==="Ventas") document.getElementById("ventasForm").style.display="block";
+  if(opcion==="Pagos") document.getElementById("pagosForm").style.display="block";
+  if(opcion==="Usuarios") document.getElementById("usuariosForm").style.display=esAdmin?"block":"none";
+  if(opcion==="Estado de Cuenta") document.getElementById("estadoCuentaForm").style.display="block";
+}
+
+// --- LOGOUT ---
+logout.addEventListener("click", ()=>{
+  bienvenida.textContent="";
+  sidebar.style.display="none";
+  form.style.display="block";
+  document.querySelectorAll(".formulario").forEach(f=>f.style.display="none");
+});
+
+// --- CLIENTES ---
+document.getElementById("guardarCliente").addEventListener("click", agregarCliente);
+async function cargarClientes(){
+  const { data } = await supabase.from("clientes").select("*");
+  const selects=[document.getElementById("clienteVenta"),document.getElementById("clientePago"),document.getElementById("clienteEstado"),document.getElementById("selectCliente")];
+  selects.forEach(s=>s.innerHTML="<option value=''>Nuevo Cliente</option>");
+  data.forEach(c=>{
+    selects.forEach(s=>{
+      const opt=document.createElement("option");
+      opt.value=c.id;
+      opt.textContent=c.nombre;
+      s.appendChild(opt);
+    });
+  });
+}
+
+async function cargarClienteSeleccionado(){
+  const id = document.getElementById("selectCliente").value;
+  if(!id){ 
+    document.getElementById("nombreCliente").value=""; 
+    document.getElementById("direccionCliente").value=""; 
+    document.getElementById("telefonoCliente").value=""; 
+    document.getElementById("correoCliente").value=""; 
+    return; 
+  }
+  const { data } = await supabase.from("clientes").select("*").eq("id",id).single();
+  document.getElementById("nombreCliente").value = data.nombre;
+  document.getElementById("direccionCliente").value = data.direccion;
+  document.getElementById("telefonoCliente").value = data.telefono;
+  document.getElementById("correoCliente").value = data.correo_electronico;
+}
+
+async function agregarCliente(){
+  const id = document.getElementById("selectCliente").value;
+  const nombre=document.getElementById("nombreCliente").value.trim();
+  const direccion=document.getElementById("direccionCliente").value.trim();
+  const telefono=document.getElementById("telefonoCliente").value.trim();
+  const correo=document.getElementById("correoCliente").value.trim();
+
+  if(!nombre){ alert("El nombre del cliente es obligatorio."); return; }
+
+  if(id){
+    // Confirmar edición
+    if(!confirm("¿Desea actualizar este cliente?")) return;
+    const { error } = await supabase.from("clientes").update({nombre,direccion,telefono,correo_electronico:correo}).eq("id",id);
+    if(error) alert("Error al editar: "+error.message); else { alert("✅ Cliente editado"); cargarClientes(); }
+  } else {
+    // Crear nuevo cliente
+    const { error } = await supabase.from("clientes").insert([{ nombre,direccion,telefono,correo_electronico:correo }]);
+    if(error) alert("Error al agregar: "+error.message); else { alert("✅ Cliente agregado"); cargarClientes(); }
+  }
+}
+
+// --- VENTAS ---
+document.getElementById("guardarVenta").addEventListener("click", async()=>{
+  const cliente_id=document.getElementById("clienteVenta").value;
+  const fecha=document.getElementById("fechaVenta").value;
+  const descripcion=document.getElementById("descripcionVenta").value;
+  const monto=parseFloat(document.getElementById("montoVenta").value);
+  if(!cliente_id || !fecha || !descripcion || isNaN(monto)){ alert("Complete todos los campos"); return; }
+  const { error } = await supabase.from("ventas").insert([{cliente_id,fecha,descripcion,monto}]);
+  if(error) alert("Error: "+error.message); else alert("✅ Venta registrada");
+});
+
+// --- PAGOS ---
+document.getElementById("guardarPago").addEventListener("click", async()=>{
+  const cliente_id=document.getElementById("clientePago").value;
+  const fecha=document.getElementById("fechaPago").value;
+  const descripcion=document.getElementById("descripcionPago").value;
+  const monto=parseFloat(document.getElementById("montoPago").value);
+  if(!cliente_id || !fecha || !descripcion || isNaN(monto)){ alert("Complete todos los campos"); return; }
+  const { error } = await supabase.from("pagos").insert([{cliente_id,fecha,descripcion,monto}]);
+  if(error) alert("Error: "+error.message); else alert("✅ Pago registrado");
+});
+
+// --- USUARIOS ---
+document.getElementById("guardarUsuario").addEventListener("click", async()=>{
+  if(!esAdmin){ alert("Solo administradores pueden crear usuarios."); return; }
+  const usuario=document.getElementById("nuevoUsuario").value.trim();
+  const contrasena=document.getElementById("nuevaContrasena").value.trim();
+  const es_admin=document.getElementById("rolUsuario").value==="true";
+  if(!usuario || !contrasena){ alert("Complete todos los campos"); return; }
+  const { error } = await supabase.from("usuarios").insert([{usuario,contrasena,es_admin}]);
+  if(error) alert("Error: "+error.message); else alert("✅ Usuario creado");
+});
+
+// --- ESTADO DE CUENTA ---
+document.getElementById("generarPDF").addEventListener("click", async()=>{
+  const cliente_id=document.getElementById("clienteEstado").value;
+  if(!cliente_id){ alert("Seleccione un cliente"); return; }
+  const { data: cliente } = await supabase.from("clientes").select("*").eq("id",cliente_id).single();
+  const { data: ventas } = await supabase.from("ventas").select("*").eq("cliente_id",cliente_id);
+  const { data: pagos } = await supabase.from("pagos").select("*").eq("cliente_id",cliente_id);
+
+  let movimientos=[];
+  ventas.forEach(v=>movimientos.push({fecha:v.fecha,tipo:"Venta",desc:v.descripcion,monto:parseFloat(v.monto)}));
+  pagos.forEach(p=>movimientos.push({fecha:p.fecha,tipo:"Pago",desc:v.descripcion,monto:parseFloat(v.monto)}));
+  movimientos.sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+
+  let saldoAcumulado = 0;
+  movimientos = movimientos.map(m=>{
+    if(m.tipo==="Venta") saldoAcumulado += m.monto;
+    if(m.tipo==="Pago") saldoAcumulado -= m.monto;
+    return {...m, saldo: saldoAcumulado};
+  });
+
+  const totalVentas=movimientos.filter(m=>m.tipo==="Venta").reduce((a,b)=>a+b.monto,0);
+  const totalPagos=movimientos.filter(m=>m.tipo==="Pago").reduce((a,b)=>a+b.monto,0);
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const fechaActual = new Date().toLocaleString();
+
+  doc.setFontSize(16);
+  doc.text("BANCO DE EJEMPLO - Estado de Cuenta", 14, 20);
+  doc.setFontSize(12);
+  doc.text(`Cliente: ${cliente.nombre}`, 14, 28);
+  if(cliente.direccion) doc.text(`Dirección: ${cliente.direccion}`, 14, 34);
+  if(cliente.telefono) doc.text(`Teléfono: ${cliente.telefono}`, 14, 40);
+  if(cliente.correo_electronico) doc.text(`Correo: ${cliente.correo_electronico}`, 14, 46);
+  doc.text(`Fecha de generación: ${fechaActual}`, 14, 52);
+
+  const rows = movimientos.map(m=>[m.fecha,m.tipo,m.desc,"$"+m.monto.toFixed(2),"$"+m.saldo.toFixed(2)]);
+  doc.autoTable({
+    head:[["Fecha","Tipo","Descripción","Monto","Saldo"]],
+    body: rows,
+    startY:60,
+    theme:"grid",
+    headStyles:{fillColor:[41,128,185], textColor:255, fontStyle:"bold"},
+    styles:{fontSize:10}
+  });
+
+  const finalY = doc.lastAutoTable.finalY + 10;
+  doc.setFontSize(12);
+  doc.text(`Total Ventas: $${totalVentas.toFixed(2)}`, 14, finalY);
+  doc.text(`Total Pagos: $${totalPagos.toFixed(2)}`, 14, finalY + 6);
+  doc.text(`Saldo Final: $${(totalVentas-totalPagos).toFixed(2)}`, 14, finalY + 12);
+
+  doc.save(`EstadoCuenta_${cliente.nombre}_${fechaActual.replace(/[: ]/g,"_")}.pdf`);
+});
+</script>
+</body>
+</html>
